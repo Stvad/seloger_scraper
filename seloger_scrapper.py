@@ -1,6 +1,7 @@
 import requests
 import bs4
 import re
+import csv
 from multiprocessing import Pool
 
 
@@ -10,7 +11,7 @@ class SeLogerScrapper:
         self.base_links = ["http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=2000&rayon=15&tri=a_px_loyer&LISTING-LISTpg=",
                            "http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=2000&rayon=15&tri=d_px_loyer&LISTING-LISTpg="]
 
-        self.pages_count = 100
+        self.pages_count = 1
 
         self.apartments = []
 
@@ -23,8 +24,9 @@ class SeLogerScrapper:
     def get_apartment_links_from_url(url):
         response = requests.get(url)
         soup = bs4.BeautifulSoup(response.text, "lxml")
-        return [article.attrs.get('data-listing-id')
-                                  for article in soup.select('article.listing.life_annuity')]
+        result_set = {article.attrs.get('data-listing-id')
+                      for article in soup.select('article.listing.life_annuity')}
+        return list(result_set)
 
     def get_apartment_links(self):
         pool = Pool(8)
@@ -48,41 +50,56 @@ class SeLogerScrapper:
 
         resume_info = soup.find("div", class_="resume__infos")
         price_string = next(resume_info.find(id="price").stripped_strings)
-        apartment_info["price"] = int(price_string.split()[0])
+        coma = price_string.find(',')
+        if coma != -1:
+            price_string = price_string[:coma] #yeah it's starting to look really sad
+        apartment_info["price"] = int(''.join(filter(str.isdigit, price_string)))
+        #int(price_string.split()[0])
 
         description = soup.find(class_="detail__description")
+        apartment_info["neighborhood"] = \
+            SeLogerScrapper.get_string_number(description.find(class_="detail-subtitle").find("span").string)
         apartment_info["description"] = description.find("p", class_="description").string
 
-        apartment_info.update(SeLogerScrapper.process_criteria(
-            description.find_all("li", class_="liste__item liste__item-switch")))
+        parameter_list = description.find("ol", class_="description-liste")
+        apartment_info.update(SeLogerScrapper.process_criteria(parameter_list.find_all('li')))
 
         return apartment_info
 
     @staticmethod
     def process_criteria(criteria):
-        processed_criteria = {}
+        processed_criteria = {"furnished": 0, "balcony": 0, "separate_toilet": 0}
         for criterion in criteria: #reorginize?
-            if "m²" in criterion.string:
+            if not criterion.string:
+                continue
+            elif "m²" in criterion.string:
                 processed_criteria["floor_size"] = SeLogerScrapper.get_string_number(criterion.string)
+            elif "etages" in criterion.string.lower(): #i know it will overlap with etage, but considering order - it's ok
+                processed_criteria["floors_total"] = SeLogerScrapper.get_string_number(criterion.string)
             elif "etage" in criterion.string.lower():
                 processed_criteria["floor"] = SeLogerScrapper.get_string_number(criterion.string)
-            elif "etages" in criterion.string.lower():
-                processed_criteria["floors_total"] = SeLogerScrapper.get_string_number(criterion.string)
-            elif "pièce" in criterion.string.lower() or "pièces" in criterion.string.lower():
+            elif "pièce" in criterion.string.lower():
                 processed_criteria["rooms_count"] = SeLogerScrapper.get_string_number(criterion.string)
             elif "meublé" in criterion.string.lower():
-                processed_criteria["furnished"] = True
+                processed_criteria["furnished"] = 1
+            elif "balcon" in criterion.string.lower() or "terrasse" in criterion.string.lower():
+                processed_criteria["balcony"] = 1
+            elif "toilettes séparées" in criterion.string.lower():
+                processed_criteria["separate_toilet"] = 1
 
         return processed_criteria
 
     @staticmethod
     def get_string_number(string):
         # return int(''.join(filter(str.isdigit, string)))
+        if 'rdc' in string.lower():
+            return 1
         return int(re.search(r'\d+', string).group())
 
     def get_apartments_info(self):
         pool = Pool(8)
         self.apartments = pool.map(SeLogerScrapper.get_apartment_info_from_url, self.get_apartment_url())
+        # self.apartments = map(SeLogerScrapper.get_apartment_info_from_url, self.get_apartment_url())
 
 
 if __name__ == '__main__':
@@ -92,10 +109,19 @@ if __name__ == '__main__':
     # print(selogerscrapper.apartment_id_list)
 
 
-    # selogerscrapper.get_apartment_links()
+    selogerscrapper.get_apartment_links()
+    selogerscrapper.get_apartments_info()
     # with open("idfile", mode='w', encoding='utf-8') as idfile:
     #     idfile.write('\n'.join(selogerscrapper.apartment_id_list) + '\n')
 
-    print(selogerscrapper.get_apartment_info_from_url("http://www.seloger.com/annonces/locations/appartement/paris-20eme-75/gambetta/103726133.htm"))
+    # apartment_info = selogerscrapper.get_apartment_info_from_url("http://www.seloger.com/annonces/locations/appartement/paris-17eme-75/champerret-berthier/103514565.htm")
+    with open('apartments.csv', mode='w', encoding='utf-8') as csvfile:
+        fieldnames = ["floor_size", "price", "furnished", "balcony", "floor", "rooms_count", "neighborhood",
+                      "separate_toilet", "floors_total", "name", "description", "url"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        writer.writeheader()
+        writer.writerows(selogerscrapper.apartments)
+
 
 
