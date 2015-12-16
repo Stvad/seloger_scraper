@@ -41,8 +41,7 @@ class SeLogerScrapper:
         return apartment_id_list
 
     @staticmethod
-    def get_apartment_url(apartment_id_list,
-                          base_apartment_url="http://www.seloger.com/annonces/locations/appartement/paris-17eme-75/"):
+    def get_apartment_url(apartment_id_list, base_apartment_url):
 
         for id in apartment_id_list:
             yield base_apartment_url + id + '.htm'
@@ -52,7 +51,6 @@ class SeLogerScrapper:
         try:
             response = requests.get(url)
             soup = bs4.BeautifulSoup(response.text, "lxml")
-            # soup.select('h1.detail-title')
             apartment_info = {"url": url}
             title_tag = soup.find("h1", class_="detail-title")
             apartment_info["name"] = next(title_tag.stripped_strings)
@@ -61,9 +59,8 @@ class SeLogerScrapper:
             price_string = next(resume_info.find(id="price").stripped_strings)
             coma = price_string.find(',')
             if coma != -1:
-                price_string = price_string[:coma] #yeah it's starting to look really sad
+                price_string = price_string[:coma]
             apartment_info["price"] = int(''.join(filter(str.isdigit, price_string)))
-            #int(price_string.split()[0])
 
             description = soup.find(class_="detail__description")
             apartment_info["neighborhood"] = \
@@ -82,7 +79,7 @@ class SeLogerScrapper:
     @staticmethod
     def process_criteria(criteria):
         processed_criteria = {"furnished": 0, "balcony": 0, "separate_toilet": 0}
-        for criterion in criteria: #reorginize?
+        for criterion in criteria:
             if not criterion.string:
                 continue
             elif "m²" in criterion.string:
@@ -104,16 +101,16 @@ class SeLogerScrapper:
 
     @staticmethod
     def get_string_number(string):
-        # return int(''.join(filter(str.isdigit, string)))
         if 'rdc' in string.lower():
             return 1
         return int(re.search(r'\d+', string).group())
 
-    def get_apartments_info(self, base_urls, pages_count=100):
+    def get_apartments_info(self, base_urls, apartment_base_url, pages_count=100):
         apartment_id = self.get_apartment_links(base_urls, pages_count)
 
         pool = Pool(self.thread_number)
-        return pool.map(SeLogerScrapper.get_apartment_info_from_url, self.get_apartment_url(apartment_id))
+        return pool.map(SeLogerScrapper.get_apartment_info_from_url,
+                        self.get_apartment_url(apartment_id, apartment_base_url))
 
 
 if __name__ == '__main__':
@@ -124,6 +121,11 @@ if __name__ == '__main__':
     parser.add_argument('urls', metavar='URLs', type=str, nargs='+', help='List of base search URLs')
     parser.add_argument('-o', '--output', default='apartments.csv', type=str)
     parser.add_argument('-p', '--pages', default=100, type=int)
+    parser.add_argument('-b', '--apartment_base_url',
+                        default="http://www.seloger.com/annonces/locations/appartement/paris-17eme-75/", type=str)
+    # according to my experience the last part dosen't matter - the apartments are returned by id,
+    # but it have to be there to work correctly. So I left one of the Paris districts there, but it works all the same
+    # for other districts/cities
 
     arguments = parser.parse_args()
 
@@ -133,7 +135,8 @@ if __name__ == '__main__':
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
-        writer.writerows(selogerscrapper.get_apartments_info(arguments.urls, arguments.pages))
+        writer.writerows(selogerscrapper.get_apartments_info(arguments.urls,
+                                                             arguments.apartment_base_url, arguments.pages))
 
 
 
