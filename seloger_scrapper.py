@@ -1,3 +1,5 @@
+import traceback
+
 import requests
 import bs4
 import re
@@ -11,7 +13,7 @@ class SeLogerScrapper:
         self.base_links = ["http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=2000&rayon=15&tri=a_px_loyer&LISTING-LISTpg=",
                            "http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=2000&rayon=15&tri=d_px_loyer&LISTING-LISTpg="]
 
-        self.pages_count = 1
+        self.pages_count = 100
 
         self.apartments = []
 
@@ -41,28 +43,33 @@ class SeLogerScrapper:
 
     @staticmethod
     def get_apartment_info_from_url(url):
-        response = requests.get(url)
-        soup = bs4.BeautifulSoup(response.text, "lxml")
-        # soup.select('h1.detail-title')
-        apartment_info = {"url": url}
-        title_tag = soup.find("h1", class_="detail-title")
-        apartment_info["name"] = next(title_tag.stripped_strings)
+        try:
+            response = requests.get(url)
+            soup = bs4.BeautifulSoup(response.text, "lxml")
+            # soup.select('h1.detail-title')
+            apartment_info = {"url": url}
+            title_tag = soup.find("h1", class_="detail-title")
+            apartment_info["name"] = next(title_tag.stripped_strings)
 
-        resume_info = soup.find("div", class_="resume__infos")
-        price_string = next(resume_info.find(id="price").stripped_strings)
-        coma = price_string.find(',')
-        if coma != -1:
-            price_string = price_string[:coma] #yeah it's starting to look really sad
-        apartment_info["price"] = int(''.join(filter(str.isdigit, price_string)))
-        #int(price_string.split()[0])
+            resume_info = soup.find("div", class_="resume__infos")
+            price_string = next(resume_info.find(id="price").stripped_strings)
+            coma = price_string.find(',')
+            if coma != -1:
+                price_string = price_string[:coma] #yeah it's starting to look really sad
+            apartment_info["price"] = int(''.join(filter(str.isdigit, price_string)))
+            #int(price_string.split()[0])
 
-        description = soup.find(class_="detail__description")
-        apartment_info["neighborhood"] = \
-            SeLogerScrapper.get_string_number(description.find(class_="detail-subtitle").find("span").string)
-        apartment_info["description"] = description.find("p", class_="description").string
+            description = soup.find(class_="detail__description")
+            apartment_info["neighborhood"] = \
+                SeLogerScrapper.get_string_number(description.find(class_="detail-subtitle").find("span").string)
+            apartment_info["description"] = str(description.find("p", class_="description").string)
 
-        parameter_list = description.find("ol", class_="description-liste")
-        apartment_info.update(SeLogerScrapper.process_criteria(parameter_list.find_all('li')))
+            parameter_list = description.find("ol", class_="description-liste")
+            apartment_info.update(SeLogerScrapper.process_criteria(parameter_list.find_all('li')))
+        except Exception:
+            print(url)
+            print(traceback.format_exc())
+            return {}
 
         return apartment_info
 
