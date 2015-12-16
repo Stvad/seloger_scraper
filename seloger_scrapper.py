@@ -1,9 +1,12 @@
 import traceback
+from argparse import ArgumentParser
 
 import requests
 import bs4
 import re
 import csv
+import argparse
+
 from multiprocessing import Pool
 
 
@@ -116,24 +119,23 @@ class SeLogerScrapper:
 if __name__ == '__main__':
     selogerscrapper = SeLogerScrapper()
 
-    # selogerscrapper.get_apartment_links_from_page("http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=2000&rayon=15&tri=a_px_loyer&LISTING-LISTpg=1")
-    # print(selogerscrapper.apartment_id_list)
+    parser = ArgumentParser(description="Scrapper for SeLoger.com")
 
+    parser.add_argument('urls', metavar='URLs', type=str, nargs='+', help='List of base search URLs')
+    parser.add_argument('-o', '--output', default='apartments.csv', type=str)
+    parser.add_argument('-p', '--pages', default=100, type=int)
 
-    # selogerscrapper.get_apartment_links()
-    # selogerscrapper.get_apartments_info()
-    # with open("idfile", mode='w', encoding='utf-8') as idfile:
-    #     idfile.write('\n'.join(selogerscrapper.apartment_id_list) + '\n')
+    arguments = parser.parse_args()
 
-    # apartment_info = selogerscrapper.get_apartment_info_from_url("http://www.seloger.com/annonces/locations/appartement/paris-17eme-75/champerret-berthier/103514565.htm")
-    pbase_urls = ["http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=900&rayon=15&si_meuble=1&surfacemin=23&tri=a_px&LISTING-LISTpg="]
-    with open('apartments.csv', mode='w', encoding='utf-8') as csvfile:
+    with open(arguments.output, mode='w', encoding='utf-8') as csvfile:
         fieldnames = ["floor_size", "price", "furnished", "balcony", "floor", "rooms_count", "neighborhood",
                       "separate_toilet", "floors_total", "name", "description", "url"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
-        writer.writerows(selogerscrapper.get_apartments_info(pbase_urls, 7))
+        writer.writerows(selogerscrapper.get_apartments_info(arguments.urls, arguments.pages))
+
+
 
 
 
