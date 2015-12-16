@@ -8,18 +8,13 @@ from multiprocessing import Pool
 
 
 class SeLogerScrapper:
-    def __init__(self):
-        self.apartment_id_list = []
-        self.base_links = ["http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=2000&rayon=15&tri=a_px_loyer&LISTING-LISTpg=",
-                           "http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=2000&rayon=15&tri=d_px_loyer&LISTING-LISTpg="]
+    def __init__(self, thread_number=8):
+        self.thread_number = thread_number
 
-        self.pages_count = 100
-
-        self.apartments = []
-
-    def get_list_link(self):
-        for link in self.base_links:
-            for page in range(1, self.pages_count + 1):
+    @staticmethod
+    def get_list_link(base_urls, pages_count):
+        for link in base_urls:
+            for page in range(1, pages_count + 1):
                 yield link + str(page)
 
     @staticmethod
@@ -30,15 +25,23 @@ class SeLogerScrapper:
                       for article in soup.select('article.listing.life_annuity')}
         return list(result_set)
 
-    def get_apartment_links(self):
-        pool = Pool(8)
-        results_by_page = pool.map(SeLogerScrapper.get_apartment_links_from_url, self.get_list_link())
-        for result in results_by_page:
-            self.apartment_id_list.extend(result)
+    def get_apartment_links(self, base_urls, pages_count):
+        pool = Pool(self.thread_number)
+        apartment_id_list = []
 
-    def get_apartment_url(self):
-        base_apartment_url = "http://www.seloger.com/annonces/locations/appartement/paris-17eme-75/"
-        for id in self.apartment_id_list:
+        results_by_page = pool.map(SeLogerScrapper.get_apartment_links_from_url,
+                                   self.get_list_link(base_urls, pages_count))
+
+        for result in results_by_page:
+            apartment_id_list.extend(result)
+
+        return apartment_id_list
+
+    @staticmethod
+    def get_apartment_url(apartment_id_list,
+                          base_apartment_url="http://www.seloger.com/annonces/locations/appartement/paris-17eme-75/"):
+
+        for id in apartment_id_list:
             yield base_apartment_url + id + '.htm'
 
     @staticmethod
@@ -103,10 +106,11 @@ class SeLogerScrapper:
             return 1
         return int(re.search(r'\d+', string).group())
 
-    def get_apartments_info(self):
-        pool = Pool(8)
-        self.apartments = pool.map(SeLogerScrapper.get_apartment_info_from_url, self.get_apartment_url())
-        # self.apartments = map(SeLogerScrapper.get_apartment_info_from_url, self.get_apartment_url())
+    def get_apartments_info(self, base_urls, pages_count=100):
+        apartment_id = self.get_apartment_links(base_urls, pages_count)
+
+        pool = Pool(self.thread_number)
+        return pool.map(SeLogerScrapper.get_apartment_info_from_url, self.get_apartment_url(apartment_id))
 
 
 if __name__ == '__main__':
@@ -116,19 +120,20 @@ if __name__ == '__main__':
     # print(selogerscrapper.apartment_id_list)
 
 
-    selogerscrapper.get_apartment_links()
-    selogerscrapper.get_apartments_info()
+    # selogerscrapper.get_apartment_links()
+    # selogerscrapper.get_apartments_info()
     # with open("idfile", mode='w', encoding='utf-8') as idfile:
     #     idfile.write('\n'.join(selogerscrapper.apartment_id_list) + '\n')
 
     # apartment_info = selogerscrapper.get_apartment_info_from_url("http://www.seloger.com/annonces/locations/appartement/paris-17eme-75/champerret-berthier/103514565.htm")
+    pbase_urls = ["http://www.seloger.com/list.htm?cp=75&idtt=1&idtypebien=1,13,14,2,9&photo=15&pxmax=900&rayon=15&si_meuble=1&surfacemin=23&tri=a_px&LISTING-LISTpg="]
     with open('apartments.csv', mode='w', encoding='utf-8') as csvfile:
         fieldnames = ["floor_size", "price", "furnished", "balcony", "floor", "rooms_count", "neighborhood",
                       "separate_toilet", "floors_total", "name", "description", "url"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
-        writer.writerows(selogerscrapper.apartments)
+        writer.writerows(selogerscrapper.get_apartments_info(pbase_urls, 7))
 
 
 
